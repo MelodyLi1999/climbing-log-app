@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 
 # ========= 连接 Supabase =========
-SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.com"
+SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
 SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
