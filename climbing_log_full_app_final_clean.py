@@ -51,8 +51,8 @@ else:
     HEATMAP_BG = "white"
 
 # ========= Supabase =========
-SUPABASE_URL = "你的SUPABASE_URL"
-SUPABASE_KEY = "你的SUPABASE_KEY"
+SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
+SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
 
 @st.cache_resource
 def init_supabase():
@@ -152,3 +152,4 @@ if menu == "个人统计":
         ax.set_xticks([])
         ax.spines[:].set_visible(False)
         st.pyplot(fig)
+
