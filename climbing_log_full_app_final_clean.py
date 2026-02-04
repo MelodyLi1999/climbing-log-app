@@ -24,7 +24,7 @@ if menu == "记录攀岩":
     gym = st.text_input("岩馆")
 
     climb_type = st.selectbox("攀岩类型", ["室内抱石", "高墙顶绳", "高墙先锋", "野攀"])
-    route_count = st.number_input("完成路线数", min_value=0)
+    route_count = st.number_input("完成路线数", min_value=0, step=1)
     max_grade = st.text_input("最高等级")
 
     if st.button("保存记录"):
@@ -35,7 +35,7 @@ if menu == "记录攀岩":
             "city": city,
             "gym": gym,
             "climb_type": climb_type,
-            "route_count": route_count,
+            "route_count": int(route_count),
             "max_grade": max_grade,
         }
 
@@ -61,3 +61,4 @@ if menu == "查看统计":
         st.subheader("各岩馆攀爬天数")
         gym_count = df["gym"].value_counts()
         st.bar_chart(gym_count)
+
