@@ -22,7 +22,7 @@ with col_theme2:
         if st.button("🌙"):
             set_theme("dark")
 
-# ========= 图表风格随主题变化 =========
+# ========= 图表风格 =========
 if st.session_state.theme_mode == "dark":
     plt.style.use("dark_background")
     matplotlib.rcParams.update({
@@ -51,8 +51,8 @@ else:
     HEATMAP_BG = "white"
 
 # ========= Supabase =========
-SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
-SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
+SUPABASE_URL = "你的SUPABASE_URL"
+SUPABASE_KEY = "你的SUPABASE_KEY"
 
 @st.cache_resource
 def init_supabase():
@@ -105,6 +105,11 @@ if menu == "个人统计":
         user = st.selectbox("选择用户", df["user_name"].unique())
         df = df[df["user_name"] == user]
 
+        # ===== 时间范围筛选 =====
+        start_date = st.date_input("开始日期", df["date"].min())
+        end_date = st.date_input("结束日期", df["date"].max())
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+
         st.subheader("训练概览")
         col1, col2, col3 = st.columns(3)
         col1.metric("攀爬天数", df["date"].nunique())
@@ -153,3 +158,28 @@ if menu == "个人统计":
         ax.spines[:].set_visible(False)
         st.pyplot(fig)
 
+        # ===== Streak =====
+        st.subheader("🔥 连续训练记录")
+
+        dates = sorted(trained_days)
+        longest = current = 0
+        prev_day = None
+
+        for d in dates:
+            if prev_day and (d - prev_day).days == 1:
+                current += 1
+            else:
+                current = 1
+            longest = max(longest, current)
+            prev_day = d
+
+        today = datetime.date.today()
+        streak = 0
+        temp_day = today
+        while temp_day in trained_days:
+            streak += 1
+            temp_day -= datetime.timedelta(days=1)
+
+        col1, col2 = st.columns(2)
+        col1.metric("当前连续训练天数", streak)
+        col2.metric("历史最长连续训练", longest)
