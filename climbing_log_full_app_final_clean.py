@@ -5,23 +5,50 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-import re
 
-# ========= 图表统一风格 =========
-plt.style.use("seaborn-v0_8-whitegrid")
-matplotlib.rcParams.update({
-    "font.family": "DejaVu Sans",   # 只用于英文，避免中文方块
-    "axes.titlesize": 14,
-    "axes.labelsize": 11,
-    "xtick.labelsize": 9,
-    "ytick.labelsize": 9,
-    "axes.edgecolor": "#dddddd",
-    "axes.linewidth": 0.8,
-    "grid.color": "#eeeeee",
-    "grid.linestyle": "-",
-    "grid.linewidth": 0.6,
-    "axes.unicode_minus": False,
-})
+# ========= 主题切换 =========
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "dark"
+
+def set_theme(mode):
+    st.session_state.theme_mode = mode
+
+col_theme1, col_theme2 = st.columns([8,1])
+with col_theme2:
+    if st.session_state.theme_mode == "dark":
+        if st.button("🌞"):
+            set_theme("light")
+    else:
+        if st.button("🌙"):
+            set_theme("dark")
+
+# ========= 图表风格随主题变化 =========
+if st.session_state.theme_mode == "dark":
+    plt.style.use("dark_background")
+    matplotlib.rcParams.update({
+        "axes.edgecolor": "#444",
+        "grid.color": "#333",
+        "text.color": "#E6EDF3",
+        "axes.labelcolor": "#E6EDF3",
+        "xtick.color": "#AAB2BF",
+        "ytick.color": "#AAB2BF",
+    })
+    LINE_COLOR = "#4CAF50"
+    HEATMAP_CMAP = plt.cm.YlGn
+    HEATMAP_BG = "#0E1117"
+else:
+    plt.style.use("seaborn-v0_8-whitegrid")
+    matplotlib.rcParams.update({
+        "axes.edgecolor": "#dddddd",
+        "grid.color": "#eeeeee",
+        "text.color": "#333333",
+        "axes.labelcolor": "#333333",
+        "xtick.color": "#555555",
+        "ytick.color": "#555555",
+    })
+    LINE_COLOR = "#2E7D32"
+    HEATMAP_CMAP = plt.cm.Greens
+    HEATMAP_BG = "white"
 
 # ========= Supabase =========
 SUPABASE_URL = "你的SUPABASE_URL"
@@ -49,9 +76,7 @@ if menu == "记录攀岩":
     gym = st.text_input("岩馆")
     climb_type = st.selectbox("攀岩类型", ["室内抱石", "高墙顶绳", "高墙先锋", "野攀"])
     route_count = st.number_input("完成路线数", min_value=0, step=1)
-
-    st.markdown("**最高等级**")
-    max_grade = st.text_input("例如 V5 或 5.11c")
+    max_grade = st.text_input("最高等级（如 V5 或 5.11c）")
 
     if st.button("保存记录"):
         data = {
@@ -80,37 +105,25 @@ if menu == "个人统计":
         user = st.selectbox("选择用户", df["user_name"].unique())
         df = df[df["user_name"] == user]
 
-        start_date = st.date_input("开始日期", df["date"].min())
-        end_date = st.date_input("结束日期", df["date"].max())
-        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
-
         st.subheader("训练概览")
         col1, col2, col3 = st.columns(3)
         col1.metric("攀爬天数", df["date"].nunique())
         col2.metric("完成总路线", int(df["route_count"].sum()))
         col3.metric("去过岩馆数", df["gym"].nunique())
 
-        st.divider()
-
-        st.subheader("各类型完成路线数")
-        st.bar_chart(df.groupby("climb_type")["route_count"].sum())
-
-        st.subheader("最常去的岩馆")
-        st.bar_chart(df["gym"].value_counts())
-
-        # ===== Monthly Trend =====
+        # ===== 趋势图 =====
         st.subheader("Training Frequency Trend")
         monthly = df.groupby(df["date"].dt.to_period("M")).size()
         monthly.index = monthly.index.astype(str)
 
         fig, ax = plt.subplots()
-        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2, color="#2E7D32")
+        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2, color=LINE_COLOR)
         ax.set_title("Monthly Training Frequency")
         ax.set_xlabel("Month")
         ax.set_ylabel("Sessions")
         st.pyplot(fig)
 
-        # ===== Heatmap =====
+        # ===== 热力图 =====
         st.subheader("📅 年度训练打卡图")
         year = st.selectbox("选择年份", sorted(df["date"].dt.year.unique(), reverse=True))
         df_year = df[df["date"].dt.year == year]
@@ -129,8 +142,8 @@ if menu == "个人统计":
                 heatmap[weekday, week] = 1
 
         fig, ax = plt.subplots(figsize=(14, 3))
-        cmap = plt.cm.Greens
-        cmap.set_bad(color="white")
+        cmap = HEATMAP_CMAP
+        cmap.set_bad(color=HEATMAP_BG)
 
         ax.imshow(heatmap, aspect='auto', cmap=cmap, vmin=0, vmax=1)
         ax.set_yticks(range(7))
@@ -139,28 +152,3 @@ if menu == "个人统计":
         ax.set_xticks([])
         ax.spines[:].set_visible(False)
         st.pyplot(fig)
-
-        # ===== Streak =====
-        st.subheader("🔥 连续训练记录")
-
-        dates = sorted(trained_days)
-        longest = current = 0
-        prev_day = None
-
-        for d in dates:
-            if prev_day and (d - prev_day).days == 1:
-                current += 1
-            else:
-                current = 1
-            longest = max(longest, current)
-            prev_day = d
-
-        today = datetime.date.today()
-        streak = 0
-        while today in trained_days:
-            streak += 1
-            today -= datetime.timedelta(days=1)
-
-        col1, col2 = st.columns(2)
-        col1.metric("当前连续训练天数", streak)
-        col2.metric("历史最长连续训练", longest)
