@@ -2,6 +2,9 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import re
 
 # ========= Supabase 连接 =========
 SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
@@ -18,6 +21,23 @@ st.title("🏔️ 攀岩日志系统")
 
 menu = st.sidebar.selectbox("菜单", ["记录攀岩", "个人统计"])
 
+# ========= 等级转换函数 =========
+def grade_to_number(grade, climb_type):
+    if not grade:
+        return None
+    grade = grade.strip().lower()
+    if "抱石" in climb_type and grade.startswith("v"):
+        try:
+            return int(grade.replace("v", ""))
+        except:
+            return None
+    match = re.match(r"5\.(\d+)([abcd]?)", grade)
+    if match:
+        base = int(match.group(1))
+        offset = {"":0, "a":0.1, "b":0.2, "c":0.3, "d":0.4}
+        return base + offset.get(match.group(2), 0)
+    return None
+
 # ========= 记录功能 =========
 if menu == "记录攀岩":
     st.header("新增攀岩记录")
@@ -29,9 +49,55 @@ if menu == "记录攀岩":
     gym = st.text_input("岩馆")
     climb_type = st.selectbox("攀岩类型", ["室内抱石", "高墙顶绳", "高墙先锋", "野攀"])
     route_count = st.number_input("完成路线数", min_value=0, step=1)
-    max_grade = st.text_input("最高等级")
 
-    if st.button("保存记录"):
+    # ===== 等级输入增强 =====
+    boulder_grades = [f"V{i}" for i in range(0, 13)]
+    rope_grades = [
+        "5.9","5.10a","5.10b","5.10c","5.10d",
+        "5.11a","5.11b","5.11c","5.11d",
+        "5.12a","5.12b","5.12c","5.12d",
+        "5.13a","5.13b","5.13c","5.13d"
+    ]
+
+    st.markdown("**最高等级**")
+    col1, col2 = st.columns([2,1])
+
+    with col1:
+        max_grade_input = st.text_input("手动输入等级（可选）")
+
+    with col2:
+        if "抱石" in climb_type:
+            max_grade_select = st.selectbox("常见等级选择", [""] + boulder_grades)
+        else:
+            max_grade_select = st.selectbox("常见等级选择", [""] + rope_grades)
+
+    max_grade_raw = max_grade_select if max_grade_select else max_grade_input
+
+    def normalize_grade(g):
+        if not g:
+            return ""
+        g = g.strip()
+        if g.lower().startswith("v"):
+            return "V" + g[1:]
+        return g.lower()
+
+    max_grade = normalize_grade(max_grade_raw)
+
+    valid = True
+    if max_grade:
+        if "抱石" in climb_type:
+            if not re.match(r"^V\d+$", max_grade):
+                valid = False
+        else:
+            if not re.match(r"^5\.\d{1,2}[abcd]?$", max_grade):
+                valid = False
+
+    if not valid:
+        st.warning("等级格式不正确，请使用 V5 或 5.11c 这种格式")
+    else:
+        st.caption("等级填写规范：抱石 V5；绳索 5.11c")
+
+    if st.button("保存记录") and valid:
         data = {
             "user_name": user.strip(),
             "date": str(date),
@@ -42,7 +108,6 @@ if menu == "记录攀岩":
             "route_count": int(route_count),
             "max_grade": max_grade,
         }
-
         supabase.table("climb_records").insert(data, returning="minimal").execute()
         st.success("记录已保存到云端数据库！")
 
@@ -57,12 +122,9 @@ if menu == "个人统计":
         st.info("还没有记录")
     else:
         df["date"] = pd.to_datetime(df["date"])
-
-        # 选择用户
         user = st.selectbox("选择用户", df["user_name"].unique())
         df = df[df["user_name"] == user]
 
-        # 时间范围筛选
         start_date = st.date_input("开始日期", df["date"].min())
         end_date = st.date_input("结束日期", df["date"].max())
         df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
@@ -76,15 +138,64 @@ if menu == "个人统计":
         st.divider()
 
         st.subheader("各类型完成路线数")
-        type_sum = df.groupby("climb_type")["route_count"].sum()
-        st.bar_chart(type_sum)
+        st.bar_chart(df.groupby("climb_type")["route_count"].sum())
 
         st.subheader("最常去的岩馆")
-        gym_count = df["gym"].value_counts()
-        st.bar_chart(gym_count)
+        st.bar_chart(df["gym"].value_counts())
 
         st.subheader("训练频率趋势")
         monthly = df.groupby(df["date"].dt.to_period("M")).size()
         monthly.index = monthly.index.astype(str)
         st.line_chart(monthly)
 
+        # ===== 年度打卡热力图 =====
+        st.subheader("📅 年度训练打卡图")
+        year = st.selectbox("选择年份", sorted(df["date"].dt.year.unique(), reverse=True))
+        df_year = df[df["date"].dt.year == year]
+        trained_days = set(df_year["date"].dt.date)
+
+        start = datetime.date(year, 1, 1)
+        end = datetime.date(year, 12, 31)
+        all_days = pd.date_range(start, end)
+        heatmap = np.zeros((7, len(all_days) // 7 + 2))
+
+        for day in all_days:
+            week = day.isocalendar().week - 1
+            weekday = day.weekday()
+            heatmap[weekday, week] = 1 if day.date() in trained_days else 0
+
+        fig, ax = plt.subplots(figsize=(14, 3))
+        ax.imshow(heatmap, aspect='auto', cmap='Greens', vmin=0, vmax=1)
+        ax.set_yticks(range(7))
+        ax.set_yticklabels(["周一","周二","周三","周四","周五","周六","周日"])
+        ax.set_title(f"{year} 年训练打卡图")
+        ax.set_xticks([])
+        st.pyplot(fig)
+
+        # ===== 连续训练天数 Streak =====
+        st.subheader("🔥 连续训练记录")
+
+        dates = sorted(trained_days)
+        longest = 0
+        current = 0
+        prev_day = None
+
+        for d in dates:
+            if prev_day and (d - prev_day).days == 1:
+                current += 1
+            else:
+                current = 1
+            longest = max(longest, current)
+            prev_day = d
+
+        today = datetime.date.today()
+        streak = 0
+        prev_day = today
+
+        while prev_day in trained_days:
+            streak += 1
+            prev_day -= datetime.timedelta(days=1)
+
+        col1, col2 = st.columns(2)
+        col1.metric("当前连续训练天数", streak)
+        col2.metric("历史最长连续训练", longest)
