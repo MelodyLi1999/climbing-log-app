@@ -4,7 +4,24 @@ import pandas as pd
 import datetime
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
 import re
+
+# ========= 图表全局风格 =========
+plt.style.use("seaborn-v0_8-whitegrid")
+matplotlib.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "axes.titlesize": 14,
+    "axes.labelsize": 11,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "axes.edgecolor": "#dddddd",
+    "axes.linewidth": 0.8,
+    "grid.color": "#eeeeee",
+    "grid.linestyle": "-",
+    "grid.linewidth": 0.6,
+    "axes.unicode_minus": False,
+})
 
 # ========= Supabase 连接 =========
 SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
@@ -21,7 +38,7 @@ st.title("🏔️ 攀岩日志系统")
 
 menu = st.sidebar.selectbox("菜单", ["记录攀岩", "个人统计"])
 
-# ========= 等级转换函数 =========
+# ========= 等级转换 =========
 def grade_to_number(grade, climb_type):
     if not grade:
         return None
@@ -51,13 +68,11 @@ if menu == "记录攀岩":
     route_count = st.number_input("完成路线数", min_value=0, step=1)
 
     # ===== 等级输入增强 =====
-    boulder_grades = [f"V{i}" for i in range(0, 13)]
-    rope_grades = [
-        "5.9","5.10a","5.10b","5.10c","5.10d",
-        "5.11a","5.11b","5.11c","5.11d",
-        "5.12a","5.12b","5.12c","5.12d",
-        "5.13a","5.13b","5.13c","5.13d"
-    ]
+    boulder_grades = [f"V{i}" for i in range(13)]
+    rope_grades = ["5.9","5.10a","5.10b","5.10c","5.10d",
+                   "5.11a","5.11b","5.11c","5.11d",
+                   "5.12a","5.12b","5.12c","5.12d",
+                   "5.13a","5.13b","5.13c","5.13d"]
 
     st.markdown("**最高等级**")
     col1, col2 = st.columns([2,1])
@@ -66,10 +81,10 @@ if menu == "记录攀岩":
         max_grade_input = st.text_input("手动输入等级（可选）")
 
     with col2:
-        if "抱石" in climb_type:
-            max_grade_select = st.selectbox("常见等级选择", [""] + boulder_grades)
-        else:
-            max_grade_select = st.selectbox("常见等级选择", [""] + rope_grades)
+        max_grade_select = st.selectbox(
+            "常见等级选择",
+            [""] + (boulder_grades if "抱石" in climb_type else rope_grades)
+        )
 
     max_grade_raw = max_grade_select if max_grade_select else max_grade_input
 
@@ -85,15 +100,13 @@ if menu == "记录攀岩":
 
     valid = True
     if max_grade:
-        if "抱石" in climb_type:
-            if not re.match(r"^V\d+$", max_grade):
-                valid = False
-        else:
-            if not re.match(r"^5\.\d{1,2}[abcd]?$", max_grade):
-                valid = False
+        if "抱石" in climb_type and not re.match(r"^V\d+$", max_grade):
+            valid = False
+        if "抱石" not in climb_type and not re.match(r"^5\.\d{1,2}[abcd]?$", max_grade):
+            valid = False
 
     if not valid:
-        st.warning("等级格式不正确，请使用 V5 或 5.11c 这种格式")
+        st.warning("等级格式不正确，请使用 V5 或 5.11c")
     else:
         st.caption("等级填写规范：抱石 V5；绳索 5.11c")
 
@@ -115,8 +128,7 @@ if menu == "记录攀岩":
 if menu == "个人统计":
     st.header("📊 我的攀岩统计")
 
-    response = supabase.table("climb_records").select("*").execute()
-    df = pd.DataFrame(response.data)
+    df = pd.DataFrame(supabase.table("climb_records").select("*").execute().data)
 
     if df.empty:
         st.info("还没有记录")
@@ -146,9 +158,14 @@ if menu == "个人统计":
         st.subheader("训练频率趋势")
         monthly = df.groupby(df["date"].dt.to_period("M")).size()
         monthly.index = monthly.index.astype(str)
-        st.line_chart(monthly)
+        fig, ax = plt.subplots()
+        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2)
+        ax.set_title("每月训练次数趋势")
+        ax.set_xlabel("月份")
+        ax.set_ylabel("训练次数")
+        st.pyplot(fig)
 
-        # ===== 年度打卡热力图 =====
+        # ===== 打卡热力图 =====
         st.subheader("📅 年度训练打卡图")
         year = st.selectbox("选择年份", sorted(df["date"].dt.year.unique(), reverse=True))
         df_year = df[df["date"].dt.year == year]
@@ -157,27 +174,31 @@ if menu == "个人统计":
         start = datetime.date(year, 1, 1)
         end = datetime.date(year, 12, 31)
         all_days = pd.date_range(start, end)
-        heatmap = np.zeros((7, len(all_days) // 7 + 2))
+
+        heatmap = np.full((7, len(all_days)//7 + 2), np.nan)
 
         for day in all_days:
             week = day.isocalendar().week - 1
             weekday = day.weekday()
-            heatmap[weekday, week] = 1 if day.date() in trained_days else 0
+            if day.date() in trained_days:
+                heatmap[weekday, week] = 1
 
         fig, ax = plt.subplots(figsize=(14, 3))
-        ax.imshow(heatmap, aspect='auto', cmap='Greens', vmin=0, vmax=1)
+        cmap = plt.cm.Greens
+        cmap.set_bad(color="white")
+        ax.imshow(heatmap, aspect='auto', cmap=cmap, vmin=0, vmax=1)
         ax.set_yticks(range(7))
         ax.set_yticklabels(["周一","周二","周三","周四","周五","周六","周日"])
         ax.set_title(f"{year} 年训练打卡图")
         ax.set_xticks([])
+        ax.spines[:].set_visible(False)
         st.pyplot(fig)
 
-        # ===== 连续训练天数 Streak =====
+        # ===== 连续训练 Streak =====
         st.subheader("🔥 连续训练记录")
 
         dates = sorted(trained_days)
-        longest = 0
-        current = 0
+        longest = current = 0
         prev_day = None
 
         for d in dates:
@@ -190,11 +211,9 @@ if menu == "个人统计":
 
         today = datetime.date.today()
         streak = 0
-        prev_day = today
-
-        while prev_day in trained_days:
+        while today in trained_days:
             streak += 1
-            prev_day -= datetime.timedelta(days=1)
+            today -= datetime.timedelta(days=1)
 
         col1, col2 = st.columns(2)
         col1.metric("当前连续训练天数", streak)
