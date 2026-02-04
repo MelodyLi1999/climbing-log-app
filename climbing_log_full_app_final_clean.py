@@ -7,13 +7,10 @@ import matplotlib.pyplot as plt
 import matplotlib
 import re
 
-# ✅ 中文字体修复
-matplotlib.rcParams['font.family'] = 'Noto Sans CJK JP'
-matplotlib.rcParams['axes.unicode_minus'] = False
-
-# ========= 图表全局风格 =========
+# ========= 图表统一风格 =========
 plt.style.use("seaborn-v0_8-whitegrid")
 matplotlib.rcParams.update({
+    "font.family": "DejaVu Sans",   # 只用于英文，避免中文方块
     "axes.titlesize": 14,
     "axes.labelsize": 11,
     "xtick.labelsize": 9,
@@ -26,9 +23,9 @@ matplotlib.rcParams.update({
     "axes.unicode_minus": False,
 })
 
-# ========= Supabase 连接 =========
-SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
-SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
+# ========= Supabase =========
+SUPABASE_URL = "你的SUPABASE_URL"
+SUPABASE_KEY = "你的SUPABASE_KEY"
 
 @st.cache_resource
 def init_supabase():
@@ -41,24 +38,7 @@ st.title("🏔️ 攀岩日志系统")
 
 menu = st.sidebar.selectbox("菜单", ["记录攀岩", "个人统计"])
 
-# ========= 等级转换 =========
-def grade_to_number(grade, climb_type):
-    if not grade:
-        return None
-    grade = grade.strip().lower()
-    if "抱石" in climb_type and grade.startswith("v"):
-        try:
-            return int(grade.replace("v", ""))
-        except:
-            return None
-    match = re.match(r"5\.(\d+)([abcd]?)", grade)
-    if match:
-        base = int(match.group(1))
-        offset = {"":0, "a":0.1, "b":0.2, "c":0.3, "d":0.4}
-        return base + offset.get(match.group(2), 0)
-    return None
-
-# ========= 记录功能 =========
+# ========= 记录页面 =========
 if menu == "记录攀岩":
     st.header("新增攀岩记录")
 
@@ -70,50 +50,10 @@ if menu == "记录攀岩":
     climb_type = st.selectbox("攀岩类型", ["室内抱石", "高墙顶绳", "高墙先锋", "野攀"])
     route_count = st.number_input("完成路线数", min_value=0, step=1)
 
-    # ===== 等级输入增强 =====
-    boulder_grades = [f"V{i}" for i in range(13)]
-    rope_grades = ["5.9","5.10a","5.10b","5.10c","5.10d",
-                   "5.11a","5.11b","5.11c","5.11d",
-                   "5.12a","5.12b","5.12c","5.12d",
-                   "5.13a","5.13b","5.13c","5.13d"]
-
     st.markdown("**最高等级**")
-    col1, col2 = st.columns([2,1])
+    max_grade = st.text_input("例如 V5 或 5.11c")
 
-    with col1:
-        max_grade_input = st.text_input("手动输入等级（可选）")
-
-    with col2:
-        max_grade_select = st.selectbox(
-            "常见等级选择",
-            [""] + (boulder_grades if "抱石" in climb_type else rope_grades)
-        )
-
-    max_grade_raw = max_grade_select if max_grade_select else max_grade_input
-
-    def normalize_grade(g):
-        if not g:
-            return ""
-        g = g.strip()
-        if g.lower().startswith("v"):
-            return "V" + g[1:]
-        return g.lower()
-
-    max_grade = normalize_grade(max_grade_raw)
-
-    valid = True
-    if max_grade:
-        if "抱石" in climb_type and not re.match(r"^V\d+$", max_grade):
-            valid = False
-        if "抱石" not in climb_type and not re.match(r"^5\.\d{1,2}[abcd]?$", max_grade):
-            valid = False
-
-    if not valid:
-        st.warning("等级格式不正确，请使用 V5 或 5.11c")
-    else:
-        st.caption("等级填写规范：抱石 V5；绳索 5.11c")
-
-    if st.button("保存记录") and valid:
+    if st.button("保存记录"):
         data = {
             "user_name": user.strip(),
             "date": str(date),
@@ -122,12 +62,12 @@ if menu == "记录攀岩":
             "gym": gym,
             "climb_type": climb_type,
             "route_count": int(route_count),
-            "max_grade": max_grade,
+            "max_grade": max_grade.strip()
         }
         supabase.table("climb_records").insert(data, returning="minimal").execute()
         st.success("记录已保存到云端数据库！")
 
-# ========= 统计功能 =========
+# ========= 统计页面 =========
 if menu == "个人统计":
     st.header("📊 我的攀岩统计")
 
@@ -158,17 +98,19 @@ if menu == "个人统计":
         st.subheader("最常去的岩馆")
         st.bar_chart(df["gym"].value_counts())
 
-        st.subheader("训练频率趋势")
+        # ===== Monthly Trend =====
+        st.subheader("Training Frequency Trend")
         monthly = df.groupby(df["date"].dt.to_period("M")).size()
         monthly.index = monthly.index.astype(str)
+
         fig, ax = plt.subplots()
-        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2)
-        ax.set_title("每月训练次数趋势")
-        ax.set_xlabel("月份")
-        ax.set_ylabel("训练次数")
+        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2, color="#2E7D32")
+        ax.set_title("Monthly Training Frequency")
+        ax.set_xlabel("Month")
+        ax.set_ylabel("Sessions")
         st.pyplot(fig)
 
-        # ===== 打卡热力图 =====
+        # ===== Heatmap =====
         st.subheader("📅 年度训练打卡图")
         year = st.selectbox("选择年份", sorted(df["date"].dt.year.unique(), reverse=True))
         df_year = df[df["date"].dt.year == year]
@@ -189,15 +131,16 @@ if menu == "个人统计":
         fig, ax = plt.subplots(figsize=(14, 3))
         cmap = plt.cm.Greens
         cmap.set_bad(color="white")
+
         ax.imshow(heatmap, aspect='auto', cmap=cmap, vmin=0, vmax=1)
         ax.set_yticks(range(7))
-        ax.set_yticklabels(["周一","周二","周三","周四","周五","周六","周日"])
-        ax.set_title(f"{year} 年训练打卡图")
+        ax.set_yticklabels(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])
+        ax.set_title(f"{year} Training Heatmap")
         ax.set_xticks([])
         ax.spines[:].set_visible(False)
         st.pyplot(fig)
 
-        # ===== 连续训练 Streak =====
+        # ===== Streak =====
         st.subheader("🔥 连续训练记录")
 
         dates = sorted(trained_days)
@@ -221,4 +164,3 @@ if menu == "个人统计":
         col1, col2 = st.columns(2)
         col1.metric("当前连续训练天数", streak)
         col2.metric("历史最长连续训练", longest)
-
