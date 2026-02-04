@@ -39,7 +39,7 @@ if menu == "记录攀岩":
             "max_grade": max_grade,
         }
 
-        supabase.table("climb_records").insert(data).execute()
+        supabase.table("climb_records").insert(data, returning="minimal").execute()
         st.success("记录已保存到云端数据库！")
 
 # ================= 统计功能 =================
@@ -61,4 +61,5 @@ if menu == "查看统计":
         st.subheader("各岩馆攀爬天数")
         gym_count = df["gym"].value_counts()
         st.bar_chart(gym_count)
+
 
