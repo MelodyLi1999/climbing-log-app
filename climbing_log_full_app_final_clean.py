@@ -34,8 +34,8 @@ else:
     BAR_COLOR = "#66BB6A"
 
 # ========= Supabase =========
-SUPABASE_URL = "你的SUPABASE_URL"
-SUPABASE_KEY = "你的SUPABASE_KEY"
+SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
+SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
 
 @st.cache_resource
 def init_supabase():
@@ -135,3 +135,4 @@ if menu == "多人对比":
             ax2.set_title("Highest Grade Achieved")
             ax2.set_ylabel("Grade (Numeric)")
             st.pyplot(fig2)
+
