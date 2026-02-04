@@ -7,10 +7,13 @@ import matplotlib.pyplot as plt
 import matplotlib
 import re
 
+# ✅ 中文字体修复
+matplotlib.rcParams['font.family'] = 'Noto Sans CJK JP'
+matplotlib.rcParams['axes.unicode_minus'] = False
+
 # ========= 图表全局风格 =========
 plt.style.use("seaborn-v0_8-whitegrid")
 matplotlib.rcParams.update({
-    "font.family": "DejaVu Sans",
     "axes.titlesize": 14,
     "axes.labelsize": 11,
     "xtick.labelsize": 9,
@@ -218,3 +221,4 @@ if menu == "个人统计":
         col1, col2 = st.columns(2)
         col1.metric("当前连续训练天数", streak)
         col2.metric("历史最长连续训练", longest)
+
