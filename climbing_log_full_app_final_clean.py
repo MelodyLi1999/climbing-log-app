@@ -5,6 +5,7 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+import re
 
 # ========= 主题切换 =========
 if "theme_mode" not in st.session_state:
@@ -25,30 +26,12 @@ with col_theme2:
 # ========= 图表风格 =========
 if st.session_state.theme_mode == "dark":
     plt.style.use("dark_background")
-    matplotlib.rcParams.update({
-        "axes.edgecolor": "#444",
-        "grid.color": "#333",
-        "text.color": "#E6EDF3",
-        "axes.labelcolor": "#E6EDF3",
-        "xtick.color": "#AAB2BF",
-        "ytick.color": "#AAB2BF",
-    })
     LINE_COLOR = "#4CAF50"
-    HEATMAP_CMAP = plt.cm.YlGn
-    HEATMAP_BG = "#0E1117"
+    BAR_COLOR = "#81C784"
 else:
     plt.style.use("seaborn-v0_8-whitegrid")
-    matplotlib.rcParams.update({
-        "axes.edgecolor": "#dddddd",
-        "grid.color": "#eeeeee",
-        "text.color": "#333333",
-        "axes.labelcolor": "#333333",
-        "xtick.color": "#555555",
-        "ytick.color": "#555555",
-    })
     LINE_COLOR = "#2E7D32"
-    HEATMAP_CMAP = plt.cm.Greens
-    HEATMAP_BG = "white"
+    BAR_COLOR = "#66BB6A"
 
 # ========= Supabase =========
 SUPABASE_URL = "你的SUPABASE_URL"
@@ -63,7 +46,21 @@ supabase = init_supabase()
 st.set_page_config(page_title="攀岩日志", layout="wide")
 st.title("🏔️ 攀岩日志系统")
 
-menu = st.sidebar.selectbox("菜单", ["记录攀岩", "个人统计"])
+menu = st.sidebar.selectbox("菜单", ["记录攀岩", "个人统计", "多人对比"])
+
+# ========= 等级转换 =========
+def grade_to_number(grade):
+    if not grade:
+        return None
+    grade = grade.strip().lower()
+    if grade.startswith("v"):
+        return int(grade.replace("v", ""))
+    match = re.match(r"5\.(\d+)([abcd]?)", grade)
+    if match:
+        base = int(match.group(1))
+        offset = {"":0, "a":0.1, "b":0.2, "c":0.3, "d":0.4}
+        return base + offset.get(match.group(2), 0)
+    return None
 
 # ========= 记录页面 =========
 if menu == "记录攀岩":
@@ -92,94 +89,49 @@ if menu == "记录攀岩":
         supabase.table("climb_records").insert(data, returning="minimal").execute()
         st.success("记录已保存到云端数据库！")
 
-# ========= 统计页面 =========
+# ========= 个人统计 =========
 if menu == "个人统计":
     st.header("📊 我的攀岩统计")
-
     df = pd.DataFrame(supabase.table("climb_records").select("*").execute().data)
 
-    if df.empty:
-        st.info("还没有记录")
-    else:
+    if not df.empty:
         df["date"] = pd.to_datetime(df["date"])
         user = st.selectbox("选择用户", df["user_name"].unique())
         df = df[df["user_name"] == user]
 
-        # ===== 时间范围筛选 =====
-        start_date = st.date_input("开始日期", df["date"].min())
-        end_date = st.date_input("结束日期", df["date"].max())
-        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        st.metric("攀爬天数", df["date"].nunique())
 
-        st.subheader("训练概览")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("攀爬天数", df["date"].nunique())
-        col2.metric("完成总路线", int(df["route_count"].sum()))
-        col3.metric("去过岩馆数", df["gym"].nunique())
+# ========= 多人对比 =========
+if menu == "多人对比":
+    st.header("👥 多人训练对比")
 
-        # ===== 趋势图 =====
-        st.subheader("Training Frequency Trend")
-        monthly = df.groupby(df["date"].dt.to_period("M")).size()
-        monthly.index = monthly.index.astype(str)
+    df = pd.DataFrame(supabase.table("climb_records").select("*").execute().data)
 
-        fig, ax = plt.subplots()
-        ax.plot(monthly.index, monthly.values, marker="o", linewidth=2, color=LINE_COLOR)
-        ax.set_title("Monthly Training Frequency")
-        ax.set_xlabel("Month")
-        ax.set_ylabel("Sessions")
-        st.pyplot(fig)
+    if df.empty:
+        st.info("暂无数据")
+    else:
+        df["date"] = pd.to_datetime(df["date"])
+        df["grade_num"] = df["max_grade"].apply(grade_to_number)
 
-        # ===== 热力图 =====
-        st.subheader("📅 年度训练打卡图")
-        year = st.selectbox("选择年份", sorted(df["date"].dt.year.unique(), reverse=True))
-        df_year = df[df["date"].dt.year == year]
-        trained_days = set(df_year["date"].dt.date)
+        users = st.multiselect("选择对比用户", df["user_name"].unique())
 
-        start = datetime.date(year, 1, 1)
-        end = datetime.date(year, 12, 31)
-        all_days = pd.date_range(start, end)
+        if users:
+            compare = df[df["user_name"].isin(users)]
 
-        heatmap = np.full((7, len(all_days)//7 + 2), np.nan)
+            # ===== 攀爬天数对比 =====
+            days = compare.groupby("user_name")["date"].nunique()
 
-        for day in all_days:
-            week = day.isocalendar().week - 1
-            weekday = day.weekday()
-            if day.date() in trained_days:
-                heatmap[weekday, week] = 1
+            fig1, ax1 = plt.subplots()
+            ax1.bar(days.index, days.values, color=BAR_COLOR)
+            ax1.set_title("Climbing Days Comparison")
+            ax1.set_ylabel("Days")
+            st.pyplot(fig1)
 
-        fig, ax = plt.subplots(figsize=(14, 3))
-        cmap = HEATMAP_CMAP
-        cmap.set_bad(color=HEATMAP_BG)
+            # ===== 最高等级对比 =====
+            max_grade = compare.groupby("user_name")["grade_num"].max()
 
-        ax.imshow(heatmap, aspect='auto', cmap=cmap, vmin=0, vmax=1)
-        ax.set_yticks(range(7))
-        ax.set_yticklabels(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])
-        ax.set_title(f"{year} Training Heatmap")
-        ax.set_xticks([])
-        ax.spines[:].set_visible(False)
-        st.pyplot(fig)
-
-        # ===== Streak =====
-        st.subheader("🔥 连续训练记录")
-
-        dates = sorted(trained_days)
-        longest = current = 0
-        prev_day = None
-
-        for d in dates:
-            if prev_day and (d - prev_day).days == 1:
-                current += 1
-            else:
-                current = 1
-            longest = max(longest, current)
-            prev_day = d
-
-        today = datetime.date.today()
-        streak = 0
-        temp_day = today
-        while temp_day in trained_days:
-            streak += 1
-            temp_day -= datetime.timedelta(days=1)
-
-        col1, col2 = st.columns(2)
-        col1.metric("当前连续训练天数", streak)
-        col2.metric("历史最长连续训练", longest)
+            fig2, ax2 = plt.subplots()
+            ax2.bar(max_grade.index, max_grade.values, color=LINE_COLOR)
+            ax2.set_title("Highest Grade Achieved")
+            ax2.set_ylabel("Grade (Numeric)")
+            st.pyplot(fig2)
