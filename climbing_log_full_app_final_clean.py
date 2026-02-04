@@ -4,8 +4,8 @@ import pandas as pd
 import datetime
 
 # ========= Supabase 连接 =========
-SUPABASE_URL = "你的SUPABASE_URL"
-SUPABASE_KEY = "你的SUPABASE_KEY"
+SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
+SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
 
 @st.cache_resource
 def init_supabase():
@@ -87,3 +87,4 @@ if menu == "个人统计":
         monthly = df.groupby(df["date"].dt.to_period("M")).size()
         monthly.index = monthly.index.astype(str)
         st.line_chart(monthly)
+
