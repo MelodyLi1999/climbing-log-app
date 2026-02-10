@@ -29,8 +29,8 @@ else:
     HEATMAP_BG = "white"
 
 # ========= Supabase =========
-SUPABASE_URL = "https://mdgeybilesogysrsqqrb.supabase.co"
-SUPABASE_KEY = "sb_publishable_CZ6WGBuNw499wR1oez3bAA_wJ0nKDQR"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 @st.cache_resource
 def init_supabase():
@@ -194,3 +194,4 @@ if menu == "多人对比":
             ax2.bar(grades.index, grades.values, color=LINE_COLOR)
             ax2.set_title("Highest Grade")
             st.pyplot(fig2)
+
